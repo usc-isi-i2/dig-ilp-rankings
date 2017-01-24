@@ -372,9 +372,7 @@ class ILPFormulation():
         # Read the tokens from all sources and store in the dictionary with weights
         token_semantictype_source_weight_dict = tupledict()
         token_semantictype_source_index_dict = tupledict()
-        print "Before:::"
         for index, token_input in enumerate(tokens_input):
-            print token_input
             self.update_weights_dictionary(token_semantictype_source_weight_dict, token_semantictype_source_index_dict, token_input['tokens'], token_input['source'], index, token_input['weight'])
 
         # Combine the token weights from multiple sources
