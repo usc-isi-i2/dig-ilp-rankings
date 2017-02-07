@@ -332,35 +332,50 @@ class ILPFormulation():
                         offset = 0
 
                     if(offset == 0):
-                        if((value, semantic_type_name, source) not in token_semantictype_source_weight_dict):
-                            #This value with semantic type is occuring for the 1st time
-                            token_semantictype_source_weight_dict[(value, semantic_type_name, source)] = semantic_probability*weight_of_extraction
-                            token_semantictype_source_index_dict[(value, semantic_type_name, source)] = index_value
+                        length = semantic_type['length']
+                        if((value, semantic_type_name, source, length) not in token_semantictype_source_weight_dict):
+                            #This value of this length with semantic type is occuring for the 1st time
+                            token_semantictype_source_weight_dict[(value, semantic_type_name, source, length)] = semantic_probability*weight_of_extraction
+                            token_semantictype_source_index_dict[(value, semantic_type_name, source, length)] = index_value
                         else:
                             #This is a duplicate occurence in the same group (ie. title, text)
-                            old_value = token_semantictype_source_weight_dict[(value, semantic_type_name, source)]
-                            token_semantictype_source_weight_dict[(value, semantic_type_name, source)] = self.combine_values(old_value, semantic_probability*weight_of_extraction)
-                            old_value = token_semantictype_source_index_dict[(value, semantic_type_name, source)]
-                            token_semantictype_source_index_dict[(value, semantic_type_name, source)] = old_value+";"+index_value
+                            old_value = token_semantictype_source_weight_dict[(value, semantic_type_name, source, length)]
+                            token_semantictype_source_weight_dict[(value, semantic_type_name, source, length)] = self.combine_values(old_value, semantic_probability*weight_of_extraction)
+                            old_value = token_semantictype_source_index_dict[(value, semantic_type_name, source, length)]
+                            token_semantictype_source_index_dict[(value, semantic_type_name, source, length)] = old_value+";"+index_value
 
                     else:
                         #This is a multiword token and is currently at the offset th token from the 1st token
                         first_token_value = tokens_with_semantic_types[index - offset]['value']
+                        first_token_all_semantic_types = tokens_with_semantic_types[index - offset]['semantic_type']
                         while(offset > 1):
                             offset-=1
                             first_token_value += " " + tokens_with_semantic_types[index - offset]['value']
 
 
-                        old_value = token_semantictype_source_weight_dict[(first_token_value, semantic_type_name, source)]
-                        old_value_index = token_semantictype_source_index_dict[(first_token_value, semantic_type_name, source)]
+                        possible_lengths = list()
+                        for first_token_semantic_types in first_token_all_semantic_types:
+                            if(first_token_semantic_types['type'] == semantic_type_name):
+                                if 'length' in first_token_semantic_types:
+                                    possible_lengths.append(first_token_semantic_types['length'])
+
+                        correct_length = possible_lengths[0]
+                        for possible_length in possible_lengths:
+                            if((first_token_value, semantic_type_name, source, possible_length) in token_semantictype_source_weight_dict):
+                                correct_length = possible_length
+
+                        old_value = token_semantictype_source_weight_dict[(first_token_value, semantic_type_name, source, correct_length)]
+                        old_value_index = token_semantictype_source_index_dict[(first_token_value, semantic_type_name, source, correct_length)]
                         # Update Probabilities (Not Required since will have the same probabilities)
                         # token_semantictype_source_index_weight_dict[(first_token_value, semantic_type_name, source)] = combine_values(old_value, semantic_probability*weight_of_extraction)
 
                         # Update the key (Add the remaining tokens into the same one)
-                        del token_semantictype_source_weight_dict[(first_token_value, semantic_type_name, source)]
-                        del token_semantictype_source_index_dict[(first_token_value, semantic_type_name, source)]
-                        token_semantictype_source_weight_dict[(first_token_value + " " + value, semantic_type_name, source)] = old_value
-                        token_semantictype_source_index_dict[(first_token_value + " " + value, semantic_type_name, source)] = old_value_index
+                        del token_semantictype_source_weight_dict[(first_token_value, semantic_type_name, source, correct_length)]
+                        del token_semantictype_source_index_dict[(first_token_value, semantic_type_name, source, correct_length)]
+                        token_semantictype_source_weight_dict[(first_token_value + " " + value, semantic_type_name, source, correct_length)] = old_value
+                        token_semantictype_source_index_dict[(first_token_value + " " + value, semantic_type_name, source, correct_length)] = old_value_index
+
+
 
     def formulate_ILP(self, tokens_input):
 
@@ -378,10 +393,12 @@ class ILPFormulation():
         # Combine the token weights from multiple sources
         token_semantictype_weight_dict = tupledict()
         token_semantictype_index_dict = tupledict()
-        for (token, semantic_type, source) in token_semantictype_source_weight_dict.iterkeys():
+        for (token, semantic_type, source, length) in token_semantictype_source_weight_dict.iterkeys():
             token_semantictype_weight_dict[token, semantic_type, ''] = token_semantictype_source_weight_dict.sum(token, semantic_type).getValue()
             list_of_indexes = token_semantictype_source_index_dict.select(token, semantic_type)
             token_semantictype_index_dict[token, semantic_type, ''] = ';'.join(list_of_indexes)
+
+        original_dict = token_semantictype_weight_dict.copy()
 
         self.add_coupled_constraints_to_dict(token_semantictype_weight_dict, token_semantictype_index_dict)
 
@@ -439,13 +456,16 @@ class ILPFormulation():
 
         m.optimize()
 
-        print "Constraints:"
-        constrs = m.getConstrs()
-        for constr in constrs:
-            print constr
+        # print "Constraints:"
+        # constrs = m.getConstrs()
+        # for constr in constrs:
+        #     print constr
 
         results_dict = m.getAttr('x', extractions)
+        new_dict = dict()
         for (token, semantic_type, extra_info), value in results_dict.iteritems():
+            if((token, semantic_type, extra_info) in original_dict):
+                new_dict[token+":"+semantic_type] = value
             if(value == 1):
                 # This token has been selected
                 if((token, semantic_type, extra_info) in token_semantictype_index_dict):
@@ -467,6 +487,12 @@ class ILPFormulation():
                                     # This is a match. Need to add extra information to this token
                                     semantic_type_obj[semantic_type_split[1]] = extra_info
 
+
+        with open('ilp_outputs.jl', 'a') as f:
+            json.dump(new_dict, f)
+            f.write('\n')
+        print new_dict
+        
         return tokens_input
 
 # TO CHECK EXECUTION UNCOMMENT THE FOLLOWING LINES:
