@@ -19,7 +19,7 @@ tokens_from_text = [
         {
             'length': 1,
             'type': 'city',
-            'probability': 0.1,
+            'probability': 0.3,
             'offset': 0
         }
         ]
@@ -47,7 +47,7 @@ tokens_from_text = [
           {
             'length': 1,
             'type': 'city',
-            'probability': 0.7,
+            'probability': 0.2,
             'offset': 0
           },
           {
@@ -148,6 +148,7 @@ tokens_from_title = [
 'value': 'new',
 'semantic_type': [
     {
+        'length': 3,
         'type':'city',
         'probability': 0.8,
         'offset': 0
@@ -250,6 +251,8 @@ coupled_constraints = [
 }
 ]
 
+STATE_PLACEHOLDER = 'STATE_UNKNOWN'
+
 # formulate_ILP(tokens_input, coupled_constraints) 
 
 class ILPFormulation():
@@ -281,6 +284,21 @@ class ILPFormulation():
                     to_tokens_for_from_token = None
                     if(token in constraint['dictionary']):
                         to_tokens_for_from_token = set(constraint['dictionary'][token])
+                    if(not to_tokens_for_from_token):
+                        if(constraint['to'] == 'state' and constraint['from'] == 'city'):
+                            # There is no corresponding state for the city
+                            # Adding a placeholder state
+                            to_tokens_for_from_token = set([STATE_PLACEHOLDER])
+                            # Need to add the country for placeholder state as well
+                            if(token in self.coupled_constraints[0]['dictionary']):
+                                # Token is in City Country dictionary
+                                countries_for_the_city = set(self.coupled_constraints[0]['dictionary'][token])
+                                for country in countries_for_the_city:
+                                    print "Added "+STATE_PLACEHOLDER+" "+country
+                                    token_semantictype_weight_dict[STATE_PLACEHOLDER, 'state' + '_' + 'country', country] = 0 # Added weight as 0 so that it does not come in the objective function
+                                    token_semantictype_index_dict[STATE_PLACEHOLDER, 'state' + '_' + 'country', country] = token_semantictype_index_dict[token, semantic_type, extra_info]
+
+
                     if(to_tokens_for_from_token):
                         for to_token in to_tokens_for_from_token:
                             print "Added "+token+" "+to_token
@@ -292,6 +310,7 @@ class ILPFormulation():
                                 token_semantictype_weight_dict[to_token, constraint['to'],''] = 0 #Adding weight as 0 so that it does not come in the objective function
                                 token_semantictype_index_dict[to_token, constraint['to'],''] = token_semantictype_index_dict[token, semantic_type, extra_info]
                                 constraint['to_tokens'].add(to_token)
+
                 if(semantic_type == constraint['to']):
                     constraint['to_tokens'].add(token)
 
@@ -382,7 +401,7 @@ class ILPFormulation():
         # Read the dictionaries of the coupled constraints
         for constraint in self.coupled_constraints:
             print constraint['from'] + " " + constraint['to']
-            constraint['dictionary'] = self.dictionaries[constraint['dictionary_file']] 
+            constraint['dictionary'] = self.dictionaries[constraint['dictionary_file']]
 
         # Read the tokens from all sources and store in the dictionary with weights
         token_semantictype_source_weight_dict = tupledict()
@@ -492,14 +511,14 @@ class ILPFormulation():
             json.dump(new_dict, f)
             f.write('\n')
         print new_dict
-        
+
         return tokens_input
 
-# TO CHECK EXECUTION UNCOMMENT THE FOLLOWING LINES:
-
-# ilp_formulation = ILPFormulation({
-#     'city-country':CITY_COUNTRY_DICTIONARY, 
-#     'city-state':CITY_STATE_DICTIONARY,
-#     'state-country': STATE_COUNTRY_DICTIONARY
-# })
-# ilp_formulation.formulate_ILP(tokens_input)
+if __name__ == '__main__':
+    ilp_formulation = ILPFormulation({
+        'city-country':CITY_COUNTRY_DICTIONARY, 
+        'city-state':CITY_STATE_DICTIONARY,
+        'state-country': STATE_COUNTRY_DICTIONARY
+    })
+    ilp_formulation.formulate_ILP(tokens_input)
+    print tokens_input
