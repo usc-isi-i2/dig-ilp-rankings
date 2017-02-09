@@ -10,7 +10,7 @@ config = {
     'url': 'https://github.com/usc-isi-i2/dig-ilp-rankings',
     'download_url': 'https://github.com/usc-isi-i2/dig-ilp-rankings',
     'author_email': 'rahulkap@isi.edu',
-    'version': '0.3.3',
+    'version': '0.3.4',
     'install_requires': ['digExtractor>=0.3.0'],
     # these are the subdirs of the current directory that we care about
     'packages': ['digIlpRankings'],

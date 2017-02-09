@@ -395,6 +395,16 @@ class ILPFormulation():
                         token_semantictype_source_index_dict[(first_token_value + " " + value, semantic_type_name, source, correct_length)] = old_value_index
 
 
+    def convert_vars_to_ascii(self, token_semantictype_weight_dict, replacements):
+        new_dict = tupledict()
+        for (token, semantic_type, extra_info), value in token_semantictype_weight_dict.iteritems():
+            new_token = token.encode('ascii', 'replace')
+            new_extra_info = extra_info.encode('ascii', 'replace')
+            replacements[new_token] = token
+            replacements[new_extra_info] = extra_info
+            new_dict[new_token, semantic_type, new_extra_info] = value
+
+        return new_dict
 
     def formulate_ILP(self, tokens_input):
 
@@ -421,12 +431,13 @@ class ILPFormulation():
 
         self.add_coupled_constraints_to_dict(token_semantictype_weight_dict, token_semantictype_index_dict)
 
-        print token_semantictype_index_dict
-        print token_semantictype_weight_dict
-
         m = Model("extractions")
 
         m.ModelSense = -1 #Maximize
+
+        # Gurobi cannot handle variable names in unicode. Converting them to ascii (FIX)
+        replacements = dict()
+        token_semantictype_weight_dict = self.convert_vars_to_ascii(token_semantictype_weight_dict, replacements)
 
         # Add variables to extractions model
         extractions = m.addVars(token_semantictype_weight_dict, obj=token_semantictype_weight_dict, vtype=GRB.BINARY, name="extractions")
@@ -483,6 +494,8 @@ class ILPFormulation():
         results_dict = m.getAttr('x', extractions)
         new_dict = dict()
         for (token, semantic_type, extra_info), value in results_dict.iteritems():
+            token = replacements[token]
+            extra_info = replacements[extra_info]
             if((token, semantic_type, extra_info) in original_dict):
                 new_dict[token+":"+semantic_type] = value
             if(value == 1):
