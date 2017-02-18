@@ -252,6 +252,7 @@ coupled_constraints = [
 ]
 
 STATE_PLACEHOLDER = 'STATE_UNKNOWN'
+GENERATED_SEMANTIC_SEPARATOR = '__'
 
 # formulate_ILP(tokens_input, coupled_constraints) 
 
@@ -294,17 +295,17 @@ class ILPFormulation():
                                 # Token is in City Country dictionary
                                 countries_for_the_city = set(self.coupled_constraints[0]['dictionary'][token])
                                 for country in countries_for_the_city:
-                                    print "Added "+STATE_PLACEHOLDER+" "+country
-                                    token_semantictype_weight_dict[STATE_PLACEHOLDER, 'state' + '_' + 'country', country] = 0 # Added weight as 0 so that it does not come in the objective function
-                                    token_semantictype_index_dict[STATE_PLACEHOLDER, 'state' + '_' + 'country', country] = token_semantictype_index_dict[token, semantic_type, extra_info]
+                                    # print "Added "+STATE_PLACEHOLDER+" "+country
+                                    token_semantictype_weight_dict[STATE_PLACEHOLDER, 'state' + GENERATED_SEMANTIC_SEPARATOR + 'country', country] = 0 # Added weight as 0 so that it does not come in the objective function
+                                    token_semantictype_index_dict[STATE_PLACEHOLDER, 'state' + GENERATED_SEMANTIC_SEPARATOR + 'country', country] = token_semantictype_index_dict[token, semantic_type, extra_info]
 
 
                     if(to_tokens_for_from_token):
                         for to_token in to_tokens_for_from_token:
-                            print "Added "+token+" "+to_token
+                            # print "Added "+token+" "+to_token
                             # Adding to_token (ex. country) in the extra_info field
-                            token_semantictype_weight_dict[token, constraint['from'] + '_' + constraint['to'], to_token] = 0 # Added weight as 0 so that it does not come in the objective function
-                            token_semantictype_index_dict[token, constraint['from'] + '_' + constraint['to'], to_token] = token_semantictype_index_dict[token, semantic_type, extra_info]
+                            token_semantictype_weight_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + constraint['to'], to_token] = 0 # Added weight as 0 so that it does not come in the objective function
+                            token_semantictype_index_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + constraint['to'], to_token] = token_semantictype_index_dict[token, semantic_type, extra_info]
                             if((to_token, constraint['to'], '') not in token_semantictype_weight_dict):
                                 # This is a new to_token (ex. country) that is introduced because of the from_token (ex. cities)
                                 token_semantictype_weight_dict[to_token, constraint['to'],''] = 0 #Adding weight as 0 so that it does not come in the objective function
@@ -410,7 +411,7 @@ class ILPFormulation():
 
         # Read the dictionaries of the coupled constraints
         for constraint in self.coupled_constraints:
-            print constraint['from'] + " " + constraint['to']
+            # print constraint['from'] + " " + constraint['to']
             constraint['dictionary'] = self.dictionaries[constraint['dictionary_file']]
 
         # Read the tokens from all sources and store in the dictionary with weights
@@ -450,14 +451,14 @@ class ILPFormulation():
             else:
                 tokens_with_multiple_semantictypes.add(token)
 
-        print tokens_with_multiple_semantictypes
+        # print tokens_with_multiple_semantictypes
 
         # Each token is one of the semantic types
         m.addConstrs((extractions.sum(token, '*', '') <= 1 for token in tokens_with_multiple_semantictypes), "each_token_one_semantic_type")
 
         distinct_semantic_types = set(semantic_type for (token, semantic_type, extra_info) in token_semantictype_weight_dict)
 
-        print distinct_semantic_types
+        # print distinct_semantic_types
 
         # Restricting the number of extractions of each semantic type
         m.addConstrs((extractions.sum('*', semantic_type, '*') <= NUMBER_OF_EXTRACTIONS_OF_A_TYPE for semantic_type in distinct_semantic_types), "extractions_of_a_type")
@@ -474,14 +475,14 @@ class ILPFormulation():
         for constraint in self.coupled_constraints:
             for from_token in constraint['from_tokens']:
                 # if(constraint['from'] != 'state'):
-                m.addConstr((extractions.sum(from_token, constraint['from'] + '_' + constraint['to'], '*') - extractions.sum(from_token, constraint['from'], '*') == 0), constraint['from']+"_in_one_"+constraint['to'])    
+                m.addConstr((extractions.sum(from_token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + constraint['to'], '*') - extractions.sum(from_token, constraint['from'], '*') == 0), constraint['from']+"_in_one_"+constraint['to'])    
         
         # Adding the constraint that a city can be chosen only from the country which is chosen
         # For all city_country variables, the value is <= the value of the country variable
 
         for constraint in self.coupled_constraints:
             for to_token in constraint['to_tokens']:
-                m.addConstrs( (from_to_var <= extractions.sum(to_token, constraint['to'], '') for from_to_var in extractions.select('*', constraint['from']+'_'+constraint['to'], to_token)), constraint['from']+"_from_only_the_"+constraint['to']+"_chosen")
+                m.addConstrs( (from_to_var <= extractions.sum(to_token, constraint['to'], '') for from_to_var in extractions.select('*', constraint['from']+GENERATED_SEMANTIC_SEPARATOR+constraint['to'], to_token)), constraint['from']+"_from_only_the_"+constraint['to']+"_chosen")
                 # m.addConstrs((extractions.select()))
 
         m.optimize()
@@ -496,12 +497,13 @@ class ILPFormulation():
         for (token, semantic_type, extra_info), value in results_dict.iteritems():
             token = replacements[token]
             extra_info = replacements[extra_info]
+
             if((token, semantic_type, extra_info) in original_dict):
                 new_dict[token+":"+semantic_type] = value
-            if(value == 1):
+            if(value > 0.5):
                 # This token has been selected
                 if((token, semantic_type, extra_info) in token_semantictype_index_dict):
-                    semantic_type_split = semantic_type.split("_")
+                    semantic_type_split = semantic_type.split(GENERATED_SEMANTIC_SEPARATOR)
                     index_value = token_semantictype_index_dict[token, semantic_type, extra_info]
                     indiv_index_values = index_value.split(";")
                     for indiv_index_value in indiv_index_values:
@@ -520,10 +522,20 @@ class ILPFormulation():
                                     semantic_type_obj[semantic_type_split[1]] = extra_info
 
 
-        with open('ilp_outputs.jl', 'a') as f:
-            json.dump(new_dict, f)
-            f.write('\n')
-        print new_dict
+        # with open('ilp_outputs.jl', 'a') as f:
+        #     json.dump(new_dict, f)
+        #     f.write('\n')
+        # print new_dict
+
+        test_output_list = list()
+        tokens_list = tokens_input[0]['tokens']
+        for token in tokens_list:
+            if('semantic_type' in token):
+                test_output_list.append(token)
+
+        # with open('test_outputs.jl', 'a') as f:
+        #     json.dump(test_output_list, f)
+        #     f.write('\n')
 
         return tokens_input
 
@@ -534,4 +546,4 @@ if __name__ == '__main__':
         'state-country': STATE_COUNTRY_DICTIONARY
     })
     ilp_formulation.formulate_ILP(tokens_input)
-    print tokens_input
+    # print tokens_input
