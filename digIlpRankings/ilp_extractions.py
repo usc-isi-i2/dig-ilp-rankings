@@ -10,6 +10,8 @@ NUMBER_OF_EXTRACTIONS_OF_A_TYPE = 1
 CITY_COUNTRY_DICTIONARY = 'resources/city_country_dict_15000.json'
 CITY_STATE_DICTIONARY = 'resources/city_state_dict.json'
 STATE_COUNTRY_DICTIONARY = 'resources/state_country_dict.json'
+CITY_ALL_DICTIONARY = 'resources/city_dict_15000.json'
+CITY_ALT_DICTIONARY = 'resources/city_dict_alt_15000.json'
 
 tokens_from_text = [
       {
@@ -225,7 +227,8 @@ tokens_input = [
     "tokens":tokens_from_text,
     "source":"text",
     "weight":TEXT_WEIGHT
-},
+}
+,
 {
     "tokens":tokens_from_title,
     "source":"title",
@@ -237,22 +240,30 @@ coupled_constraints = [
 {
     "from":"city",
     "to":"country",
-    "dictionary_file":'city-country' 
+    "dictionary_file":'city-country',
+    "from_tokens":set(),
+    "to_tokens":set()
 },
 {
     "from":"city",
     "to":"state",
-    "dictionary_file":'city-state'
+    "dictionary_file":'city-state',
+    "from_tokens":set(),
+    "to_tokens":set()
 },
 {
     "from":"state",
     "to":"country",
-    "dictionary_file":'state-country'
+    "dictionary_file":'state-country',
+    "from_tokens":set(),
+    "to_tokens":set()
 }
 ]
 
 STATE_PLACEHOLDER = 'STATE_UNKNOWN'
 GENERATED_SEMANTIC_SEPARATOR = '__'
+COMBINED_DICTIONARY = 'city-alt'
+POPULATION_FACTOR = 15000000.0
 
 # formulate_ILP(tokens_input, coupled_constraints) 
 
@@ -283,34 +294,66 @@ class ILPFormulation():
                 if(semantic_type == constraint['from']):
                     constraint['from_tokens'].add(token)
                     to_tokens_for_from_token = None
-                    if(token in constraint['dictionary']):
-                        to_tokens_for_from_token = set(constraint['dictionary'][token])
-                    if(not to_tokens_for_from_token):
-                        if(constraint['to'] == 'state' and constraint['from'] == 'city'):
-                            # There is no corresponding state for the city
-                            # Adding a placeholder state
-                            to_tokens_for_from_token = set([STATE_PLACEHOLDER])
-                            # Need to add the country for placeholder state as well
-                            if(token in self.coupled_constraints[0]['dictionary']):
-                                # Token is in City Country dictionary
-                                countries_for_the_city = set(self.coupled_constraints[0]['dictionary'][token])
-                                for country in countries_for_the_city:
-                                    # print "Added "+STATE_PLACEHOLDER+" "+country
-                                    token_semantictype_weight_dict[STATE_PLACEHOLDER, 'state' + GENERATED_SEMANTIC_SEPARATOR + 'country', country] = 0 # Added weight as 0 so that it does not come in the objective function
-                                    token_semantictype_index_dict[STATE_PLACEHOLDER, 'state' + GENERATED_SEMANTIC_SEPARATOR + 'country', country] = token_semantictype_index_dict[token, semantic_type, extra_info]
+
+                    # Checking if it a city and in the combined dictionary
+                    if(constraint['from'] == 'city' and token in self.dictionaries[COMBINED_DICTIONARY]):
+                        if(constraint['to'] == 'country'):
+                            # Doing this once for a city, when the to constrain is country and not state
+                            city_objs = self.dictionaries[COMBINED_DICTIONARY][token]
+                            to_tokens_for_from_token = dict()
+                            for city_obj in city_objs:
+
+                                to_token = city_obj['country']
+                                token_semantictype_weight_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + constraint['to'], to_token] = city_obj['population']/POPULATION_FACTOR # Added weight as population of the city in country
+                                token_semantictype_index_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + constraint['to'], to_token] = token_semantictype_index_dict[token, semantic_type, extra_info]
+                                if((to_token, constraint['to'], '') not in token_semantictype_weight_dict):
+                                    # This is a new to_token (ex. country) that is introduced because of the from_token (ex. cities)
+                                    token_semantictype_weight_dict[to_token, constraint['to'],''] = 0 #Adding weight as 0 so that it does not come in the objective function
+                                    token_semantictype_index_dict[to_token, constraint['to'],''] = token_semantictype_index_dict[token, semantic_type, extra_info]
+                                    constraint['to_tokens'].add(to_token)
+
+                                to_token = city_obj['state']
+                                # Doing the same for the state coming from the common dictionary
+                                token_semantictype_weight_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + 'state', to_token] = city_obj['population']/POPULATION_FACTOR # Added weight as population of the city in country
+                                token_semantictype_index_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + 'state', to_token] = token_semantictype_index_dict[token, semantic_type, extra_info]
+                                if((to_token, 'state', '') not in token_semantictype_weight_dict):
+                                    # This is a new to_token (ex. country) that is introduced because of the from_token (ex. cities)
+                                    token_semantictype_weight_dict[to_token, 'state',''] = 0 #Adding weight as 0 so that it does not come in the objective function
+                                    token_semantictype_index_dict[to_token, 'state',''] = token_semantictype_index_dict[token, semantic_type, extra_info]
+                                    self.coupled_constraints[1]['to_tokens'].add(to_token)
 
 
-                    if(to_tokens_for_from_token):
-                        for to_token in to_tokens_for_from_token:
-                            # print "Added "+token+" "+to_token
-                            # Adding to_token (ex. country) in the extra_info field
-                            token_semantictype_weight_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + constraint['to'], to_token] = 0 # Added weight as 0 so that it does not come in the objective function
-                            token_semantictype_index_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + constraint['to'], to_token] = token_semantictype_index_dict[token, semantic_type, extra_info]
-                            if((to_token, constraint['to'], '') not in token_semantictype_weight_dict):
-                                # This is a new to_token (ex. country) that is introduced because of the from_token (ex. cities)
-                                token_semantictype_weight_dict[to_token, constraint['to'],''] = 0 #Adding weight as 0 so that it does not come in the objective function
-                                token_semantictype_index_dict[to_token, constraint['to'],''] = token_semantictype_index_dict[token, semantic_type, extra_info]
-                                constraint['to_tokens'].add(to_token)
+                    else:
+                        # The case where from is not city or city is not in the combined dictionary(fallback)
+                        if(token in constraint['dictionary']):
+                            to_tokens_for_from_token = set(constraint['dictionary'][token])
+                    
+                        if(not to_tokens_for_from_token):
+                            if(constraint['to'] == 'state' and constraint['from'] == 'city'):
+                                # There is no corresponding state for the city
+                                # Adding a placeholder state
+                                to_tokens_for_from_token = set([STATE_PLACEHOLDER])
+                                # Need to add the country for placeholder state as well
+                                if(token in self.coupled_constraints[0]['dictionary']):
+                                    # Token is in City Country dictionary
+                                    countries_for_the_city = set(self.coupled_constraints[0]['dictionary'][token])
+                                    for country in countries_for_the_city:
+                                        # print "Added "+STATE_PLACEHOLDER+" "+country
+                                        token_semantictype_weight_dict[STATE_PLACEHOLDER, 'state' + GENERATED_SEMANTIC_SEPARATOR + 'country', country] = 0 # Added weight as 0 so that it does not come in the objective function
+                                        token_semantictype_index_dict[STATE_PLACEHOLDER, 'state' + GENERATED_SEMANTIC_SEPARATOR + 'country', country] = token_semantictype_index_dict[token, semantic_type, extra_info]
+
+
+                        if(to_tokens_for_from_token):
+                            for to_token in to_tokens_for_from_token:
+                                # print "Added "+token+" "+to_token
+                                # Adding to_token (ex. country) in the extra_info field
+                                token_semantictype_weight_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + constraint['to'], to_token] = 0 # Added weight as 0 so that it does not come in the objective function
+                                token_semantictype_index_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + constraint['to'], to_token] = token_semantictype_index_dict[token, semantic_type, extra_info]
+                                if((to_token, constraint['to'], '') not in token_semantictype_weight_dict):
+                                    # This is a new to_token (ex. country) that is introduced because of the from_token (ex. cities)
+                                    token_semantictype_weight_dict[to_token, constraint['to'],''] = 0 #Adding weight as 0 so that it does not come in the objective function
+                                    token_semantictype_index_dict[to_token, constraint['to'],''] = token_semantictype_index_dict[token, semantic_type, extra_info]
+                                    constraint['to_tokens'].add(to_token)
 
                 if(semantic_type == constraint['to']):
                     constraint['to_tokens'].add(token)
@@ -440,6 +483,8 @@ class ILPFormulation():
         replacements = dict()
         token_semantictype_weight_dict = self.convert_vars_to_ascii(token_semantictype_weight_dict, replacements)
 
+        # print token_semantictype_weight_dict
+
         # Add variables to extractions model
         extractions = m.addVars(token_semantictype_weight_dict, obj=token_semantictype_weight_dict, vtype=GRB.BINARY, name="extractions")
 
@@ -515,11 +560,48 @@ class ILPFormulation():
                                 # This is an original semantic type
                                 if(semantic_type == semantic_type_in_obj):
                                     semantic_type_obj['selected'] = 1
+                                    if(semantic_type == 'city'):
+                                        semantic_type_obj['city'] = token
+
                             else:
                                 # This is a generated semantic type
                                 if(semantic_type_split[0] == semantic_type_in_obj):
                                     # This is a match. Need to add extra information to this token
                                     semantic_type_obj[semantic_type_split[1]] = extra_info
+
+        # Adding the lat long information as well
+        for token_input in tokens_input:
+            tokens = token_input['tokens']
+            for token in tokens:
+                if('semantic_type' in token):
+                    semantic_type_list = token['semantic_type']
+                    for semantic_type in semantic_type_list:
+                        if(semantic_type['type'] == 'city' and semantic_type.get('selected') == 1):
+                            # print semantic_type
+                            # This is a city extraction
+                            city = semantic_type['city']
+                            state = semantic_type['state']
+                            country = semantic_type['country']
+                            found = False
+                            city_objs = self.dictionaries[COMBINED_DICTIONARY][city]
+                            for city_obj in city_objs:
+                                if(state == city_obj.get('state') and country == city_obj['country']):
+                                    # This is the city
+                                    semantic_type['latitude'] = city_obj['latitude']
+                                    semantic_type['longitude'] = city_obj['longitude']
+                                    semantic_type['geoname_id'] = city_obj['geoname_id']
+                                    found = True
+                                    break
+
+                            if(not found):
+                                for city_obj in city_objs:
+                                    if(country == city_obj['country']):
+                                        # This is the city
+                                        semantic_type['latitude'] = city_obj['latitude']
+                                        semantic_type['longitude'] = city_obj['longitude']
+                                        semantic_type['geoname_id'] = city_obj['geoname_id']
+                                        break
+
 
 
         # with open('ilp_outputs.jl', 'a') as f:
@@ -543,7 +625,9 @@ if __name__ == '__main__':
     ilp_formulation = ILPFormulation({
         'city-country':CITY_COUNTRY_DICTIONARY, 
         'city-state':CITY_STATE_DICTIONARY,
-        'state-country': STATE_COUNTRY_DICTIONARY
+        'state-country': STATE_COUNTRY_DICTIONARY,
+        'city-alt':CITY_ALT_DICTIONARY,
+        'city-all':CITY_ALL_DICTIONARY        
     })
     ilp_formulation.formulate_ILP(tokens_input)
     # print tokens_input
