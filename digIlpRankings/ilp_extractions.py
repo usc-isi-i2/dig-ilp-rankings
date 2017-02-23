@@ -313,14 +313,15 @@ class ILPFormulation():
                                     constraint['to_tokens'].add(to_token)
 
                                 to_token = city_obj['state']
-                                # Doing the same for the state coming from the common dictionary
-                                token_semantictype_weight_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + 'state', to_token] = city_obj['population']/POPULATION_FACTOR # Added weight as population of the city in country
-                                token_semantictype_index_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + 'state', to_token] = token_semantictype_index_dict[token, semantic_type, extra_info]
-                                if((to_token, 'state', '') not in token_semantictype_weight_dict):
-                                    # This is a new to_token (ex. country) that is introduced because of the from_token (ex. cities)
-                                    token_semantictype_weight_dict[to_token, 'state',''] = 0 #Adding weight as 0 so that it does not come in the objective function
-                                    token_semantictype_index_dict[to_token, 'state',''] = token_semantictype_index_dict[token, semantic_type, extra_info]
-                                    self.coupled_constraints[1]['to_tokens'].add(to_token)
+                                if(to_token):
+                                    # Doing the same for the state coming from the common dictionary
+                                    token_semantictype_weight_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + 'state', to_token] = city_obj['population']/POPULATION_FACTOR # Added weight as population of the city in country
+                                    token_semantictype_index_dict[token, constraint['from'] + GENERATED_SEMANTIC_SEPARATOR + 'state', to_token] = token_semantictype_index_dict[token, semantic_type, extra_info]
+                                    if((to_token, 'state', '') not in token_semantictype_weight_dict):
+                                        # This is a new to_token (ex. country) that is introduced because of the from_token (ex. cities)
+                                        token_semantictype_weight_dict[to_token, 'state',''] = 0 #Adding weight as 0 so that it does not come in the objective function
+                                        token_semantictype_index_dict[to_token, 'state',''] = token_semantictype_index_dict[token, semantic_type, extra_info]
+                                        self.coupled_constraints[1]['to_tokens'].add(to_token)
 
 
                     else:
@@ -580,27 +581,28 @@ class ILPFormulation():
                             # print semantic_type
                             # This is a city extraction
                             city = semantic_type['city']
-                            state = semantic_type['state']
+                            state = semantic_type.get('state')
                             country = semantic_type['country']
                             found = False
-                            city_objs = self.dictionaries[COMBINED_DICTIONARY][city]
-                            for city_obj in city_objs:
-                                if(state == city_obj.get('state') and country == city_obj['country']):
-                                    # This is the city
-                                    semantic_type['latitude'] = city_obj['latitude']
-                                    semantic_type['longitude'] = city_obj['longitude']
-                                    semantic_type['geoname_id'] = city_obj['geoname_id']
-                                    found = True
-                                    break
-
-                            if(not found):
+                            if(city in self.dictionaries[COMBINED_DICTIONARY]):
+                                city_objs = self.dictionaries[COMBINED_DICTIONARY][city]
                                 for city_obj in city_objs:
-                                    if(country == city_obj['country']):
+                                    if(state == city_obj.get('state') and country == city_obj['country']):
                                         # This is the city
                                         semantic_type['latitude'] = city_obj['latitude']
                                         semantic_type['longitude'] = city_obj['longitude']
                                         semantic_type['geoname_id'] = city_obj['geoname_id']
+                                        found = True
                                         break
+
+                                if(not found):
+                                    for city_obj in city_objs:
+                                        if(country == city_obj['country']):
+                                            # This is the city
+                                            semantic_type['latitude'] = city_obj['latitude']
+                                            semantic_type['longitude'] = city_obj['longitude']
+                                            semantic_type['geoname_id'] = city_obj['geoname_id']
+                                            break
 
 
 
