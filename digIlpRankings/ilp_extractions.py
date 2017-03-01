@@ -262,7 +262,7 @@ coupled_constraints = [
 
 STATE_PLACEHOLDER = 'STATE_UNKNOWN'
 GENERATED_SEMANTIC_SEPARATOR = '__'
-COMBINED_DICTIONARY = 'city-alt'
+COMBINED_DICTIONARY = 'city_alt'
 POPULATION_FACTOR = 15000000.0
 
 # formulate_ILP(tokens_input, coupled_constraints) 
@@ -628,8 +628,8 @@ if __name__ == '__main__':
         'city-country':CITY_COUNTRY_DICTIONARY, 
         'city-state':CITY_STATE_DICTIONARY,
         'state-country': STATE_COUNTRY_DICTIONARY,
-        'city-alt':CITY_ALT_DICTIONARY,
-        'city-all':CITY_ALL_DICTIONARY        
+        'city_alt':CITY_ALT_DICTIONARY,
+        'city_all':CITY_ALL_DICTIONARY        
     })
     ilp_formulation.formulate_ILP(tokens_input)
     # print tokens_input
