@@ -509,12 +509,6 @@ class ILPFormulation():
         # Restricting the number of extractions of each semantic type
         m.addConstrs((extractions.sum('*', semantic_type, '*') <= NUMBER_OF_EXTRACTIONS_OF_A_TYPE for semantic_type in distinct_semantic_types), "extractions_of_a_type")
 
-        # Making sure each word in the multiword token is either selected or not
-        # for multiword_token in multiword_tokens:
-        #     print extractions[multiword_token[0],multiword_token[2]]
-        #     print extractions[multiword_token[1],multiword_token[2]]
-        #     m.addConstr(extractions[multiword_token[0],multiword_token[2]] - extractions[multiword_token[1],multiword_token[2]] == 0)
-
 
         # Adding the constraint that the sum of all city_country(i) variables = value of that city
         # Meaning a city can be present in only 1 country out of the possible countries
@@ -532,11 +526,6 @@ class ILPFormulation():
                 # m.addConstrs((extractions.select()))
 
         m.optimize()
-
-        # print "Constraints:"
-        # constrs = m.getConstrs()
-        # for constr in constrs:
-        #     print constr
 
         results_dict = m.getAttr('x', extractions)
         new_dict = dict()
@@ -582,7 +571,7 @@ class ILPFormulation():
                             # This is a city extraction
                             city = semantic_type['city']
                             state = semantic_type.get('state')
-                            country = semantic_type['country']
+                            country = semantic_type.get('country')
                             found = False
                             if(city in self.dictionaries[COMBINED_DICTIONARY]):
                                 city_objs = self.dictionaries[COMBINED_DICTIONARY][city]
@@ -602,24 +591,19 @@ class ILPFormulation():
                                             semantic_type['latitude'] = city_obj['latitude']
                                             semantic_type['longitude'] = city_obj['longitude']
                                             semantic_type['geoname_id'] = city_obj['geoname_id']
+                                            found = True
                                             break
 
+                                if(not found):
+                                    # Even matching country not found
+                                    if(len(city_objs) > 0):
+                                        city_obj = city_objs[0]
+                                        semantic_type['latitude'] = city_obj['latitude']
+                                        semantic_type['longitude'] = city_obj['longitude']
+                                        semantic_type['geoname_id'] = city_obj['geoname_id']
+                                        if(not country):
+                                            semantic_type['country'] = city_obj['country']
 
-
-        # with open('ilp_outputs.jl', 'a') as f:
-        #     json.dump(new_dict, f)
-        #     f.write('\n')
-        # print new_dict
-
-        test_output_list = list()
-        tokens_list = tokens_input[0]['tokens']
-        for token in tokens_list:
-            if('semantic_type' in token):
-                test_output_list.append(token)
-
-        # with open('test_outputs.jl', 'a') as f:
-        #     json.dump(test_output_list, f)
-        #     f.write('\n')
 
         return tokens_input
 
@@ -632,4 +616,3 @@ if __name__ == '__main__':
         'city_all':CITY_ALL_DICTIONARY        
     })
     ilp_formulation.formulate_ILP(tokens_input)
-    # print tokens_input
