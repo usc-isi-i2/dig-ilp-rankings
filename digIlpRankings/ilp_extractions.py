@@ -4,237 +4,12 @@ from gurobipy import *
 import codecs
 import json
 
-TITLE_WEIGHT = 1.0
-TEXT_WEIGHT = 0.5
 NUMBER_OF_EXTRACTIONS_OF_A_TYPE = 1
 CITY_COUNTRY_DICTIONARY = 'resources/city_country_dict_15000.json'
 CITY_STATE_DICTIONARY = 'resources/city_state_dict.json'
 STATE_COUNTRY_DICTIONARY = 'resources/state_country_dict.json'
 CITY_ALL_DICTIONARY = 'resources/city_dict_15000.json'
 CITY_ALT_DICTIONARY = 'resources/city_dict_alt_15000.json'
-
-tokens_from_text = [
-      {
-        'type': 'normal',
-        'value': 'seattle',
-        'semantic_type': [
-        {
-            'length': 1,
-            'type': 'city',
-            'probability': 0.3,
-            'offset': 0
-        }
-        ]
-      },
-      {
-        'type': 'break',
-        'value': '\n'
-      },
-      {
-        'type': 'normal',
-        'value': 'colorado',
-        'semantic_type': [
-          {
-            'length': 1,
-            'type': 'city',
-            'probability': 0.1,
-            'offset': 0
-          }
-        ]
-      },
-      {
-        'type': 'normal',
-        'value': 'charlotte',
-        'semantic_type': [
-          {
-            'length': 1,
-            'type': 'city',
-            'probability': 0.2,
-            'offset': 0
-          },
-          {
-            'length': 1,
-            'type': 'name',
-            'probability': 0.5,
-            'offset': 0
-          }
-        ]
-      },
-      {
-        'type': 'break',
-        'value': '\n'
-      },
-      {
-        'type': 'normal',
-        'value': 'colorado',
-        'semantic_type': [
-          {
-            'length': 1,
-            'type': 'city',
-            'probability': 1.0,
-            'offset': 0
-          }
-        ]
-      }
-    ]
-
-tokens_from_title = [
-{
-'type': 'normal',
-'value': 'seattle',
-'semantic_type': [
-{
-    'length': 1,
-    'type': 'city',
-    'probability': 0.1,
-    'offset': 0
-}
-]
-},
-{
-'type': 'break',
-'value': '\n'
-},
-{
-'type': 'normal',
-'value': 'colorado',
-'semantic_type': [
-  {
-    'length': 1,
-    'type': 'city',
-    'probability': 1.0,
-    'offset': 0
-  }
-]
-},
-{
-'type': 'break',
-'value': '\n'
-},
-{
-'type': 'normal',
-'value': 'colorado',
-'semantic_type': [
-  {
-    'length': 1,
-    'type': 'city',
-    'probability': 1.0,
-    'offset': 0
-  }
-]
-},
-{
-'type':'normal',
-'value': 'kansas',
-'semantic_type': [
-    {
-        'length': 2,
-        'type':'city',
-        'probability': 0.5,
-        'offset': 0
-    }
-]
-},
-{
-'type':'normal',
-'value': 'city',
-'semantic_type': [
-    {
-        'type':'city',
-        'offset': 1
-    }
-]
-},
-{
-'type':'normal',
-'value': 'new',
-'semantic_type': [
-    {
-        'length': 3,
-        'type':'city',
-        'probability': 0.8,
-        'offset': 0
-    }
-]
-},
-{
-'type':'normal',
-'value': 'york',
-'semantic_type': [
-    {
-        'type':'city',
-        'offset': 1
-    }
-]
-},
-{
-'type':'normal',
-'value': 'city',
-'semantic_type': [
-    {
-        'type':'city',
-        'offset': 2
-    }
-]
-},
-{
-'type':'normal',
-'value': 'united',
-'semantic_type': [
-    {
-        'type':'country',
-        'offset': 0,
-        'length': 2
-    }
-]
-},
-{
-'type':'normal',
-'value': 'states',
-'semantic_type': [
-    {
-        'type':'country',
-        'offset': 1
-    }
-]
-},
-{
-'type':'normal',
-'value': 'italy',
-'semantic_type': [
-    {
-        'type':'country',
-        'offset': 0,
-        'length': 1,
-    }
-]
-},
-{
-'type':'normal',
-'value': 'brazil',
-'semantic_type': [
-    {
-        'type':'country',
-        'offset': 0,
-        'length': 1,
-    }
-]
-}
-]
-
-tokens_input = [
-{
-    "tokens":tokens_from_text,
-    "source":"text",
-    "weight":TEXT_WEIGHT
-}
-,
-{
-    "tokens":tokens_from_title,
-    "source":"title",
-    "weight":TITLE_WEIGHT
-}
-]
 
 coupled_constraints = [
 {
@@ -264,6 +39,14 @@ STATE_PLACEHOLDER = 'STATE_UNKNOWN'
 GENERATED_SEMANTIC_SEPARATOR = '__'
 COMBINED_DICTIONARY = 'city_alt'
 POPULATION_FACTOR = 15000000.0
+
+TITLE_WEIGHT = 1.0
+RELAXED_TEXT_WEIGHT = 0.4
+STRICT_TEXT_WEIGHT = 0.5
+LANDMARK_WEIGHT = 1.0
+DEFAULT_WEIGHT = 0.5
+DEFAULT_CONFIDENCE = 1.0
+UNKNOWN = 'UNKNOWN'
 
 # formulate_ILP(tokens_input, coupled_constraints) 
 
@@ -443,15 +226,62 @@ class ILPFormulation():
     def convert_vars_to_ascii(self, token_semantictype_weight_dict, replacements):
         new_dict = tupledict()
         for (token, semantic_type, extra_info), value in token_semantictype_weight_dict.iteritems():
-            new_token = token.encode('ascii', 'replace')
-            new_extra_info = extra_info.encode('ascii', 'replace')
-            replacements[new_token] = token
-            replacements[new_extra_info] = extra_info
-            new_dict[new_token, semantic_type, new_extra_info] = value
+            if isinstance(token, basestring):
+                new_token = token.encode('ascii', 'replace')
+                new_extra_info = extra_info.encode('ascii', 'replace')
+                replacements[new_token] = token
+                replacements[new_extra_info] = extra_info
+                new_dict[new_token, semantic_type, new_extra_info] = value
+            else:
+                new_dict[token, semantic_type, extra_info] = value
 
         return new_dict
 
-    def formulate_ILP(self, tokens_input):
+    def get_weight_from_segment(self, segment):
+        if("landmark" in segment):
+            return LANDMARK_WEIGHT
+        elif("content_relaxed" in segment):
+            return RELAXED_TEXT_WEIGHT
+        elif("content_strict" in segment):
+            return STRICT_TEXT_WEIGHT
+        elif("title" in segment):
+            return TITLE_WEIGHT
+        return DEFAULT_WEIGHT
+
+    def add_to_weights_dict_from_knowledge_graph(self, token_semantictype_source_weight_dict, token_semantictype_source_index_dict, knowledge_graph):
+        for semantic_type, value_objs in knowledge_graph.iteritems():
+            for index_value, value_obj in enumerate(value_objs):
+                value = value_obj['value']
+
+                if 'provenance' in value_obj:
+                    provenances = value_obj['provenance']
+                    for provenance in provenances:
+                        weight = DEFAULT_WEIGHT
+                        confidence_value = DEFAULT_CONFIDENCE
+                        segment = UNKNOWN
+                        if 'source' in provenance:
+                            source = provenance['source']
+                            if 'segment' in source:
+                                segment = source['segment']
+                                weight = self.get_weight_from_segment(segment)
+
+                        if 'confidence' in provenance:
+                            confidence = provenance['confidence']
+                            confidence_value = confidence['extraction']
+                            
+                        if((value, semantic_type, segment, 1) not in token_semantictype_source_weight_dict):
+                            #This value of this length with semantic type is occuring for the 1st time
+                            token_semantictype_source_weight_dict[(value, semantic_type, segment, 1)] = confidence_value*weight
+                            token_semantictype_source_index_dict[(value, semantic_type, segment, 1)] = str(index_value)
+                        else:
+                            #This is a duplicate occurence in the same group (ie. title, text)
+                            old_value = token_semantictype_source_weight_dict[(value, semantic_type, segment, 1)]
+                            token_semantictype_source_weight_dict[(value, semantic_type, segment, 1)] = self.combine_values(old_value, confidence_value*weight)
+                            old_value = token_semantictype_source_index_dict[(value, semantic_type, segment, 1)]
+                            if str(index_value) not in old_value.split(';'):
+                                token_semantictype_source_index_dict[(value, semantic_type, segment, 1)] = old_value+";"+str(index_value)
+
+    def formulate_ILP(self, knowledge_graph):
 
         # Read the dictionaries of the coupled constraints
         for constraint in self.coupled_constraints:
@@ -461,8 +291,10 @@ class ILPFormulation():
         # Read the tokens from all sources and store in the dictionary with weights
         token_semantictype_source_weight_dict = tupledict()
         token_semantictype_source_index_dict = tupledict()
-        for index, token_input in enumerate(tokens_input):
-            self.update_weights_dictionary(token_semantictype_source_weight_dict, token_semantictype_source_index_dict, token_input['tokens'], token_input['source'], index, token_input['weight'])
+        self.add_to_weights_dict_from_knowledge_graph(token_semantictype_source_weight_dict, token_semantictype_source_index_dict, knowledge_graph)
+
+        # for index, token_input in enumerate(tokens_input):
+        #     self.update_weights_dictionary(token_semantictype_source_weight_dict, token_semantictype_source_index_dict, token_input['tokens'], token_input['source'], index, token_input['weight'])
 
         # Combine the token weights from multiple sources
         token_semantictype_weight_dict = tupledict()
@@ -528,13 +360,15 @@ class ILPFormulation():
         m.optimize()
 
         results_dict = m.getAttr('x', extractions)
-        new_dict = dict()
+        # new_dict = dict()
         for (token, semantic_type, extra_info), value in results_dict.iteritems():
-            token = replacements[token]
-            extra_info = replacements[extra_info]
+            if(token in replacements):
+                token = replacements[token]
+            if(extra_info in replacements):
+                extra_info = replacements[extra_info]
 
-            if((token, semantic_type, extra_info) in original_dict):
-                new_dict[token+":"+semantic_type] = value
+            # if((token, semantic_type, extra_info) in original_dict):
+                # new_dict[token+":"+semantic_type] = value
             if(value > 0.5):
                 # This token has been selected
                 if((token, semantic_type, extra_info) in token_semantictype_index_dict):
@@ -542,41 +376,46 @@ class ILPFormulation():
                     index_value = token_semantictype_index_dict[token, semantic_type, extra_info]
                     indiv_index_values = index_value.split(";")
                     for indiv_index_value in indiv_index_values:
-                        token_input_and_index = indiv_index_value.split(":")
-                        semantic_type_list = tokens_input[int(token_input_and_index[0])]['tokens'][int(token_input_and_index[1])]['semantic_type']
-                        for semantic_type_obj in semantic_type_list:
-                            semantic_type_in_obj = semantic_type_obj['type']
-                            if(len(semantic_type_split) == 1):
-                                # This is an original semantic type
-                                if(semantic_type == semantic_type_in_obj):
-                                    semantic_type_obj['selected'] = 1
-                                    if(semantic_type == 'city'):
-                                        semantic_type_obj['city'] = token
+                        # token_input_and_index = indiv_index_value.split(":")
+                        # semantic_type_list = tokens_input[int(token_input_and_index[0])]['tokens'][int(token_input_and_index[1])]['semantic_type']
+                        # for semantic_type_obj in semantic_type_list:
+                            # semantic_type_in_obj = semantic_type_obj['type']
+                        semantic_type_objs = knowledge_graph[semantic_type]
+                        semantic_type_obj = semantic_type_objs[int(indiv_index_value)]
+                        if(len(semantic_type_split) == 1):
+                            # This is an original semantic type
+                            # if(semantic_type == semantic_type_in_obj):
+                            semantic_type_obj['selected'] = 1
 
-                            else:
-                                # This is a generated semantic type
-                                if(semantic_type_split[0] == semantic_type_in_obj):
-                                    # This is a match. Need to add extra information to this token
-                                    semantic_type_obj[semantic_type_split[1]] = extra_info
+                        else:
+                            # This is a generated semantic type
+                            # if(semantic_type_split[0] == semantic_type_in_obj):
+                                # This is a match. Need to add extra information to this token
+                            semantic_type_obj[semantic_type_split[1]] = extra_info
 
         # Adding the lat long information as well
-        for token_input in tokens_input:
-            tokens = token_input['tokens']
-            for token in tokens:
-                if('semantic_type' in token):
-                    semantic_type_list = token['semantic_type']
-                    for semantic_type in semantic_type_list:
-                        if(semantic_type['type'] == 'city' and semantic_type.get('selected') == 1):
-                            # print semantic_type
-                            # This is a city extraction
-                            city = semantic_type['city']
-                            state = semantic_type.get('state')
-                            country = semantic_type.get('country')
-                            found = False
-                            if(city in self.dictionaries[COMBINED_DICTIONARY]):
-                                city_objs = self.dictionaries[COMBINED_DICTIONARY][city]
+        for semantic_type, value_objs in knowledge_graph.iteritems():
+            if(semantic_type == 'city'):
+                for index_value, value_obj in enumerate(value_objs):
+                    if 'selected' in value_obj and value_obj['selected'] == 1:
+                        city = value_obj['value']
+                        state = semantic_type.get('state')
+                        country = semantic_type.get('country')
+                        found = False
+                        if(city in self.dictionaries[COMBINED_DICTIONARY]):
+                            city_objs = self.dictionaries[COMBINED_DICTIONARY][city]
+                            for city_obj in city_objs:
+                                if(state == city_obj.get('state') and country == city_obj['country']):
+                                    # This is the city
+                                    semantic_type['latitude'] = city_obj['latitude']
+                                    semantic_type['longitude'] = city_obj['longitude']
+                                    semantic_type['geoname_id'] = city_obj['geoname_id']
+                                    found = True
+                                    break
+
+                            if(not found):
                                 for city_obj in city_objs:
-                                    if(state == city_obj.get('state') and country == city_obj['country']):
+                                    if(country == city_obj['country']):
                                         # This is the city
                                         semantic_type['latitude'] = city_obj['latitude']
                                         semantic_type['longitude'] = city_obj['longitude']
@@ -584,28 +423,18 @@ class ILPFormulation():
                                         found = True
                                         break
 
-                                if(not found):
-                                    for city_obj in city_objs:
-                                        if(country == city_obj['country']):
-                                            # This is the city
-                                            semantic_type['latitude'] = city_obj['latitude']
-                                            semantic_type['longitude'] = city_obj['longitude']
-                                            semantic_type['geoname_id'] = city_obj['geoname_id']
-                                            found = True
-                                            break
+                            if(not found):
+                                # Even matching country not found
+                                if(len(city_objs) > 0):
+                                    city_obj = city_objs[0]
+                                    semantic_type['latitude'] = city_obj['latitude']
+                                    semantic_type['longitude'] = city_obj['longitude']
+                                    semantic_type['geoname_id'] = city_obj['geoname_id']
+                                    if(not country):
+                                        semantic_type['country'] = city_obj['country']
 
-                                if(not found):
-                                    # Even matching country not found
-                                    if(len(city_objs) > 0):
-                                        city_obj = city_objs[0]
-                                        semantic_type['latitude'] = city_obj['latitude']
-                                        semantic_type['longitude'] = city_obj['longitude']
-                                        semantic_type['geoname_id'] = city_obj['geoname_id']
-                                        if(not country):
-                                            semantic_type['country'] = city_obj['country']
-
-
-        return tokens_input
+        # print knowledge_graph
+        return knowledge_graph
 
 if __name__ == '__main__':
     ilp_formulation = ILPFormulation({
