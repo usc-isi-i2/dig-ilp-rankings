@@ -268,6 +268,8 @@ class ILPFormulation():
                         if 'confidence' in provenance:
                             confidence = provenance['confidence']
                             confidence_value = confidence['extraction']
+                            if 'embedding_probability' in confidence:
+                                confidence_value = confidence['embedding_probability']
                             
                         if((value, semantic_type, segment, 1) not in token_semantictype_source_weight_dict):
                             #This value of this length with semantic type is occuring for the 1st time
@@ -395,7 +397,7 @@ class ILPFormulation():
                             if(semantic_type_obj['value'] == token):
                                 # This is an original semantic type
                                 # if(semantic_type == semantic_type_in_obj):
-                                semantic_type_obj['selected'] = 1
+                                semantic_type_obj['confidence'] = 1.0
 
                             else:
                                 # This is a generated semantic type
@@ -410,7 +412,7 @@ class ILPFormulation():
         for semantic_type, value_objs in knowledge_graph.iteritems():
             if(semantic_type == 'city'):
                 for index_value, value_obj in enumerate(value_objs):
-                    if 'selected' in value_obj and value_obj['selected'] == 1:
+                    if 'confidence' in value_obj and value_obj['confidence'] == 1:
                         city = value_obj['value']
                         state = value_obj.get('state')
                         country = value_obj.get('country')
